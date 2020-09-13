@@ -59,8 +59,7 @@ struct GpuTimer
     }
 };
 
-void sortByHost(const uint32_t * in, int n, uint32_t * out) {
-    int nBits = 4; // Assume: nBits in {1, 2, 4, 8, 16}
+void sortByHost(const uint32_t * in, int n, uint32_t * out, int nBits) {
     int nBins = 1 << nBits; // 2^nBits
 
     int * hist = (int *)malloc(nBins * sizeof(int));
@@ -117,26 +116,28 @@ void sortByThrust(const uint32_t * in, int n, uint32_t * out) {
 	thrust::copy(dv_out.begin(), dv_out.end(), out);
 }
 
-void sortByDevice(const uint32_t * in, int n, uint32_t * out, int blockSize)
+void sortByDevice(const uint32_t * in, int n, uint32_t * out, int nBits, int blockSize)
 {
     // TODO
 }
 
 void sort(const uint32_t * in, int n,
           uint32_t * out,
-          Implementation implementation = SORT_BY_HOST, int blockSize = 1) {
+          Implementation implementation = SORT_BY_HOST,
+          int nBits = 4,
+          int blockSize = 1) {
     GpuTimer timer; 
     timer.Start();
 
     if (implementation == SORT_BY_HOST) {
     	printf("\nRadix Sort by host\n");
-        sortByHost(in, n, out);
+        sortByHost(in, n, out, nBits);
     } else if (implementation == SORT_BY_THRUST) {
     	printf("\nRadix Sort by Thrust library\n");
         sortByThrust(in, n, out);
     } else {
         printf("\nRadix Sort by device\n");
-        sortByDevice(in, n, out, blockSize);
+        sortByDevice(in, n, out, nBits, blockSize);
     }
 
     timer.Stop();
@@ -218,8 +219,13 @@ int main(int argc, char ** argv)
         blockSize = atoi(argv[1]);
     }
 
+    int nBits = 4;
+    if (argc == 3) {
+        nBits = atoi(argv[2]);
+    }
+
     // Sorting by Host
-    sort(in, n, correctOut);
+    sort(in, n, correctOut, SORT_BY_HOST, nBits);
     if (DEBUG) {
         printArray(correctOut, n);
     }
@@ -233,7 +239,7 @@ int main(int argc, char ** argv)
     memset(out, 0u, n * sizeof(uint32_t)); // Reset ouput.
 
     // Sorting by Device
-    sort(in, n, out, SORT_BY_DEVICE, blockSize);
+    sort(in, n, out, SORT_BY_DEVICE, nBits, blockSize);
     if (DEBUG) {
         printArray(out, n);
     }
