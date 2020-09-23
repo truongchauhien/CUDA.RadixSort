@@ -5,51 +5,12 @@
 #include <thrust/device_ptr.h>
 #include <thrust/copy.h>
 #include <thrust/sort.h>
+#include "common/common.h"
 
 #define DEBUG 0
+#define MEASURE_PORTION_EXECUTION_TIME 1
 
 typedef enum { SORT_BY_HOST, SORT_BY_THRUST, SORT_SEQUENTIALLY_BY_HOST_USING_PARALLEL_ALGORITHM } Implementation;
-
-#define CHECK(call) {                                                          \
-    const cudaError_t error = call;                                            \
-    if (error != cudaSuccess) {                                                \
-        fprintf(stderr, "Error: %s:%d, ", __FILE__, __LINE__);                 \
-        fprintf(stderr, "code: %d, reason: %s\n", error,                       \
-                cudaGetErrorString(error));                                    \
-        exit(EXIT_FAILURE);                                                    \
-    }                                                                          \
-}
-
-struct GpuTimer {
-    cudaEvent_t start;
-    cudaEvent_t stop;
-
-    GpuTimer() {
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-    }
-
-    ~GpuTimer() {
-        cudaEventDestroy(start);
-        cudaEventDestroy(stop);
-    }
-
-    void Start() {
-        cudaEventRecord(start, 0);
-        cudaEventSynchronize(start);
-    }
-
-    void Stop() {
-        cudaEventRecord(stop, 0);
-    }
-
-    float Elapsed() {
-        float elapsed;
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&elapsed, start, stop);
-        return elapsed;
-    }
-};
 
 void sortByHost(const uint32_t *input, int n, uint32_t *output, int numBits) {
     int nBins = 1 << numBits;
@@ -103,6 +64,17 @@ void sortByThrust(const uint32_t *in, int n, uint32_t *out) {
 }
 
 void sortByHostUsingParallelAlgorithm(const uint32_t *input, int n, uint32_t *output, int numBits, int blockSize) {
+    // ============================================
+    #if MEASURE_PORTION_EXECUTION_TIME
+    GpuTimer timer;
+    float histogramElapsedTime = 0.0f;
+    float scanElapsedTime = 0.0f;
+    float internalBlockSortingElapsedTime = 0.0f;
+    float firstIndicesFindingElapedTime = 0.0f;
+    float scatteringElapsedTime = 0.0f;
+    #endif
+    // ============================================
+
     int numBlocks = (n - 1) / blockSize + 1;
     int numBins = 1 << numBits;
     
@@ -120,9 +92,13 @@ void sortByHostUsingParallelAlgorithm(const uint32_t *input, int n, uint32_t *ou
     int      *firstIndices  = (int *)     malloc(numBins   * sizeof(int));
 
     for (int bit = 0; bit < sizeof(uint32_t) * 8; bit += numBits) {
-        memset(blockHistograms, 0, histogramBlocksMemSize);
-
+        // ============================================
         // Calculate local histogram for each block.
+        #if MEASURE_PORTION_EXECUTION_TIME
+        timer.Start();
+        #endif
+
+        memset(blockHistograms, 0, histogramBlocksMemSize);
         for (int blockIndex = 0; blockIndex < numBlocks; ++blockIndex) {
             uint32_t *blockPtr = source + (blockIndex * blockSize);
             int *blockHistogram = blockHistograms + (blockIndex * numBins);
@@ -135,7 +111,18 @@ void sortByHostUsingParallelAlgorithm(const uint32_t *input, int n, uint32_t *ou
             }
         }
 
+        #if MEASURE_PORTION_EXECUTION_TIME
+        timer.Stop();
+        histogramElapsedTime += timer.Elapsed();
+        #endif
+        // ============================================
+
+        // ============================================
         // Scan histograms by column-major order.
+        #if MEASURE_PORTION_EXECUTION_TIME
+        timer.Start();
+        #endif
+
         blockHistogramsScan[0] = 0;
         for (int index = 1; index < numBins * numBlocks; ++index) {
             int currentBin = index / numBlocks;
@@ -149,9 +136,21 @@ void sortByHostUsingParallelAlgorithm(const uint32_t *input, int n, uint32_t *ou
                 +   blockHistograms[previousBlockIndex * numBins + previousBin];
         }
 
+        #if MEASURE_PORTION_EXECUTION_TIME
+        timer.Stop();
+        scanElapsedTime += timer.Elapsed();
+        #endif
+        // ============================================
+
+        // ============================================
         // Sort internally each block, then calculate rank and scatter.
         for (int blockIndex = 0; blockIndex < numBlocks; ++blockIndex) {
             uint32_t *blockPtr = source + (blockIndex * blockSize);
+
+            // ============================================
+            #if MEASURE_PORTION_EXECUTION_TIME
+            timer.Start();
+            #endif
 
             for (int innerBit = 0; innerBit < numBits; ++innerBit) {
                 block1BitScan[0] = 0;
@@ -197,6 +196,17 @@ void sortByHostUsingParallelAlgorithm(const uint32_t *input, int n, uint32_t *ou
                 }
             }
 
+            #if MEASURE_PORTION_EXECUTION_TIME
+            timer.Stop();
+            internalBlockSortingElapsedTime += timer.Elapsed();
+            #endif
+            // ============================================
+
+            // ============================================
+            #if MEASURE_PORTION_EXECUTION_TIME
+            timer.Start();
+            #endif
+
             firstIndices[(blockPtr[0] >> bit) & (numBins - 1)] = 0;
             for (int localIndex = 1; localIndex < blockSize; ++localIndex) {
                 int index = localIndex + blockIndex * blockSize;
@@ -209,6 +219,17 @@ void sortByHostUsingParallelAlgorithm(const uint32_t *input, int n, uint32_t *ou
                 }
             }
 
+            #if MEASURE_PORTION_EXECUTION_TIME
+            timer.Stop();
+            firstIndicesFindingElapedTime += timer.Elapsed();
+            #endif
+            // ============================================
+
+            // ============================================
+            #if MEASURE_PORTION_EXECUTION_TIME
+            timer.Start();
+            #endif
+
             for (int localIndex = 0; localIndex < blockSize; ++localIndex) {
                 int index = localIndex + blockIndex * blockSize;
                 if (index < n) {
@@ -218,7 +239,14 @@ void sortByHostUsingParallelAlgorithm(const uint32_t *input, int n, uint32_t *ou
                     destination[rank] = blockPtr[localIndex];
                 }
             }
+
+            #if MEASURE_PORTION_EXECUTION_TIME
+            timer.Stop();
+            scatteringElapsedTime += timer.Elapsed();
+            #endif
+            // ============================================
         }
+        // ============================================
 
         uint32_t *temp = source;
         source = destination;
@@ -233,6 +261,14 @@ void sortByHostUsingParallelAlgorithm(const uint32_t *input, int n, uint32_t *ou
     free(blockHistograms);
     free(destination);
     free(source);
+
+    #if MEASURE_PORTION_EXECUTION_TIME
+    printf(">>>> Time | Histogram             : %.3f\n", histogramElapsedTime);
+    printf(">>>> Time | Scan                  : %.3f\n", scanElapsedTime);
+    printf(">>>> Time | Sort internally block : %.3f\n", internalBlockSortingElapsedTime);
+    printf(">>>> Time | Find First Indices    : %.3f\n", firstIndicesFindingElapedTime);
+    printf(">>>> Time | Scatter               : %.3f\n", scatteringElapsedTime);
+    #endif
 }
 
 void sort(const uint32_t *in, int n,
@@ -240,7 +276,7 @@ void sort(const uint32_t *in, int n,
           Implementation implementation = SORT_BY_HOST,
           int numBits = 4,
           int blockSize = 1) {
-    GpuTimer timer; 
+    GpuTimer timer;
     timer.Start();
 
     if (implementation == SORT_BY_HOST) {
@@ -273,7 +309,7 @@ void printDeviceInfo() {
     printf("****************************\n");
 }
 
-void checkCorrectness(uint32_t * out, uint32_t * correctOut, int n) {
+void checkCorrectness(uint32_t *out, uint32_t *correctOut, int n) {
     for (int i = 0; i < n; i++) {
         if (out[i] != correctOut[i]) {
             printf("INCORRECT :(\n");
@@ -283,14 +319,14 @@ void checkCorrectness(uint32_t * out, uint32_t * correctOut, int n) {
     printf("CORRECT :)\n");
 }
 
-void printArray(uint32_t * a, int n) {
+void printArray(uint32_t *a, int n) {
     for (int i = 0; i < n; i++) {
         printf("%i ", a[i]);
     }
     printf("\n");
 }
 
-int main(int argc, char ** argv) {
+int main(int argc, char **argv) {
     // PRINT OUT DEVICE INFO
     printDeviceInfo();
 
