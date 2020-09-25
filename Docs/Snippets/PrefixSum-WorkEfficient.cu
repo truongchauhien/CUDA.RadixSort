@@ -1,4 +1,4 @@
-#include "./common/common.h"
+#include "common/common.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -8,6 +8,7 @@
 typedef enum { BY_HOST, BY_DEVICE } Implementation;
 
 __global__ void scanPerBlock(const int *input, int n, int *output, int *blockSums) {
+    // SMEM Size: blockDim.x elements.
     extern __shared__ int s_data[];
     
     int index = blockIdx.x * blockDim.x + threadIdx.x;
