@@ -12,11 +12,11 @@ Lớp 18HCB, Khoa Công nghệ Thông tin, Trường Đại học Khoa học T�
 **Bắt đầu thực hiện**: Ngày 13/09/2020  
 **Thuyết trình và vấn đáp:** Dự kiến vào 03/10/2020
 |**STT**|**Tóm tắt công việc**|**Thời gian hoàn thành**|
-|---|:---|:---|:---|
+|---|:---|:---|
 |1|**Cài đặt phiên bản baseline #1**: Cài đặt thuật toán Radix Sort tuần tự.|13/09/2020|
 |2|**Cài đặt phiên bản baseline #2**: Cài đặt song song hai phần histogram và scan của thuật toán Radix Sort tuần tự.|16/09/2020|
 |3|**Cài đặt phiên bản baseline #3**: Cài đặt song song thuật toán Radix Sort với kích thước digit là 1-bit.|17/09/2020|
-|4|**Cài đặt phiên bản baseline #4**: Cài đặt <ins>tuần tự</ins> thuật toán Radix Sort song song.|23/09/2020|
+|4|**Cài đặt phiên bản baseline #4**: Cài đặt tuần tự thuật toán Radix Sort song song.|23/09/2020|
 |5|**Cài đặt phiên bản parallel #1**: Dựa trên baseline #4. Cài đặt song song phần sắp xếp cục bộ từng block dữ liệu.|04/10/2020|
 |6|**Cài đặt phiên bản parallel #2**: Dựa trên parallel #1. Cài đặt song song phần tính rank và scatter|04/10/2020|
 |7|**Cài đặt phiên bản parallel #3**: Dựa trên parallel #2. Cài đặt song song phần tính toán bảng histogram.|04/10/2020|
