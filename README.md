@@ -77,13 +77,29 @@ _(thuật toán đã được cung cấp sẵn trong file "Docs/RadixSortTemplat
 3. **Cài đặt:** Sử dụng lại thuật toán histogram song song, có sử dụng SMEM.
 
 ### 3.2.4. Phiên bản tối ưu #4
-1. **Phân tích:** Ở phiên bản Parallel #3, còn một phần chưa được cài đặt song song, là phần scan bảng histogram (tạo thành từ các histogram cục bộ của mỗi block). Tiến hành cài đặt song song phần này để cải thiện thời gian chạy, và cũng để không phải tốn chi phí sao chép dữ liệu từ device sang host và ngược lại như khi còn là cài đặt tuần tự.
+1. **Phân tích:** Ở phiên bản Parallel #3, còn một phần chưa được cài đặt song song, là phần scan bảng histogram (tạo thành từ các histogram cục bộ của mỗi block). Tiến hành cài đặt song song phần này để cải thiện thời gian chạy, cũng như để dễ dàng hơn trong việc quản lí bộ nhớ ở các bản tối ưu về sau, khi giảm bớt chi phí cấp phát bộ nhớ ở device và sao chép dữ liệu từ host sang deivce và ngược lại.
 2. **Thiết kế:** Scan bảng histogram theo thứ tự từng cột nối với nhau (từ bin thấp đến bin cao) - hay scan theo column-major order.
 
    Một vấn đề phát sinh khi duyệt bảng histogram (một ma trận lưu trữ theo kiểu row-major order trong bộ nhớ) theo column-major order, thì pattern truy xuất bộ nhớ Global Memory không được hiệu quả. Lí do là không đảm bảo các truy xuất có tính coalesced (liền mạch), nên không tận dụng hiểu quả băng thông bộ nhớ (cần nhiều transaction hơn, dữ liệu đọc lên nhưng không cần đến rất nhiều).
 
    Để giải quyết vấn đề pattern truy xuất bộ nhớ, có thể chuyển vị ma trận histogram trước khi scan, khi đó duyệt cột ở ma trận cũ chính là duyệt dòng ở ma trận chuyển vị.
 3. **Cài đặt:**  
-Cài đặt song song thuật toán chuyển vị ma trận ([Docs/Snippets/MatrixTranspose](./Docs/Snippets/MatrixTranspose.cu)).
+   * Cài đặt song song thuật toán chuyển vị ma trận ([Docs/Snippets/MatrixTranspose](./Docs/Snippets/MatrixTranspose.cu)).  
+   * Trước khi thực hiện scan ma trận histogram, tiến hành chuyển vị ma trận histogram để có được pattern truy xuất Global Memory hiệu quả. 
+   Sau khi scan xong: 
+      * Để giữ cho hàm kernel scatter hoạt động mà không phải chỉnh sửa gì thêm, thì phải chuyển vị ma trận scan histogram. Hàm kernel scatter vẫn xem bảng scan histogram là ma trận có số cột là số bin, số dòng là số block.  
+      (tạm thời chọn cách này)
+      * Nếu không muốn chuyển vị thì phải chỉnh sửa dòng lệnh tìm index của giá trị prefix-sum của một bin.
 
 ### 3.2.5. Phiên bản tối ưu #5
+1. **Phân tích:** Do cài đặt từng phần một song song trên device, nên mỗi khi chạy hàm kernel đều có phần sao chép dữ liệu từ host sang device và ngược lại, để cho những phần chưa được cài đặt song song chạy. Bây giờ, các phần đều được cài đặt song song trên device, nên có thể bỏ đi những thao tác cấp phát, sao chép dữ liệu không cần thiết.
+2. **Thiết kế:** Bỏ đi những thao tác cấp phát, sao chép dữ liệu giữa host và device không cần thiết. Công việc cấp phát dữ liệu chỉ nên thực hiện 1 lần, và hạn chế tối đa việc sao chép dữ liệu.
+3. **Cài đặt:**
+   * Bỏ những thao tác cấp phát, sao chép dữ liệu không cần thiết trong phần sắp xếp cục bộ, tính toán histogram, chuyển vị và scan, scatter.
+   * Trong phần thực hiện scan bảng histogram, để không phải cấp phát lại nhiều lần mảng lưu trữ tổng của mỗi block, sử dụng biến static và thêm cơ chế tự phát hiện khi có thay đổi về kích thước (trong trường hợp không thoát chương trình và chạy hàm với input khác hoặc block size khác).
+   * Ngoài ra, còn có cài đặt thêm một số chỉ thị tiền xử lí để bỏ đi những câu lệnh kiểm tra lỗi khi gọi CUDA API và kernel khi không có nhu cầu kiểm lỗi.
+
+### 3.2.6. Phiên bản tối ưu #6
+1. **Phân tích:** Ở phiên bản Parallel #5, phần sắp xếp nội bộ dữ liệu của một block chiếm nhiều thời gian nhất. Nếu tối ưu được thời gian chạy của phần này sẽ cải thiện thời gian chạy của chương trình lên rất nhiều.
+2. **Thiết kế:**
+3. **Cài đặt:**
