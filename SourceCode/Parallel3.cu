@@ -308,19 +308,6 @@ void sortByDevice(const uint32_t *input, int n, uint32_t *output, int numBits, i
         timer.Start();
         #endif
 
-
-        // memset(histogramTable, 0, histogramTableMemSize);
-        // for (int blockIndex = 0; blockIndex < numBlocks; ++blockIndex) {
-        //     uint32_t *blockPtr = source + (blockIndex * blockSize);
-        //     uint32_t *blockHistogram = histogramTable + (blockIndex * numBins);
-        //     for (int localIndex = 0; localIndex < blockSize; ++localIndex) {
-        //         int index = localIndex + blockIndex * blockSize;
-        //         if (index < n) {
-        //             int bin = (blockPtr[localIndex] >> startBit) & (numBins - 1);
-        //             blockHistogram[bin]++;
-        //         }
-        //     }
-        // }
         histogram(source, n, histogramTable, startBit, numBits, blockSize);
 
         #if MEASURE_PORTION_EXECUTION_TIME
@@ -462,11 +449,11 @@ int main(int argc, char **argv) {
 
     // SET UP INPUT SIZE
     int n;
-    if (DEBUG) {
-        n = 513;
-    } else {
-        n = (1 << 24) + 1;
-    }
+    #if DEBUG
+    n = 513;
+    #else
+    n = (1 << 24) + 1;
+    #endif
     printf("\nInput size: %d\n", n);
 
     // ALLOCATE MEMORIES
@@ -477,15 +464,15 @@ int main(int argc, char **argv) {
 
     // SET UP INPUT DATA
     for (int i = 0; i < n; i++) {
-        if (DEBUG) {
-            in[i] = rand() & 0xFF;
-        } else {
-            in[i] = rand();
-        }
+        #if DEBUG
+        in[i] = rand() & 0xFF;
+        #else
+        in[i] = rand();
+        #endif
     }
-    if (DEBUG) {
-        printArray(in, n);
-    }
+    #if DEBUG
+    printArray(in, n);
+    #endif
 
     // DETERMINE BLOCK SIZE
     int blockSize = 512;
@@ -493,30 +480,36 @@ int main(int argc, char **argv) {
         blockSize = atoi(argv[1]);
     }
 
-    int numBits = 4;
+    int numBits;
+    #if DEBUG
+    numBits = 4;
+    #else
+    numBits = 8;
+    #endif
+
     if (argc == 3) {
         numBits = atoi(argv[2]);
     }
 
     // Sorting by Host
     sort(in, n, correctOut, SORT_BY_HOST, numBits);
-    if (DEBUG) {
-        printArray(correctOut, n);
-    }
+    #if DEBUG
+    printArray(correctOut, n);
+    #endif
 
     // Sorting by Thrust Library
     sort(in, n, out, SORT_BY_THRUST);
-    if (DEBUG) {
-        printArray(out, n);
-    }
+    #if DEBUG
+    printArray(out, n);
+    #endif
     checkCorrectness(out, correctOut, n);
     memset(out, 0u, n * sizeof(uint32_t)); // Reset ouput.
 
     // Sorting by Device
     sort(in, n, out, SORT_BY_DEVICE, numBits, blockSize);
-    if (DEBUG) {
-        printArray(out, n);
-    }
+    #if DEBUG
+    printArray(out, n);
+    #endif
     checkCorrectness(out, correctOut, n);
 
     // FREE MEMORIES
