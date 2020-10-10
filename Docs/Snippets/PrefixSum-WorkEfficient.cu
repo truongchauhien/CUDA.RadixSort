@@ -223,7 +223,7 @@ __global__ void addScannedBlockSumsToScannedBlocksUnroll2(int *blockSums, int *b
     }
     if (blockDim.x + index < n) {
         blockScans[blockDim.x + index] += blockSums[blockIdx.x];
-    }    
+    }
 }
 
 __host__ void scanByDevice(const int *input, int numElements, int *output, 

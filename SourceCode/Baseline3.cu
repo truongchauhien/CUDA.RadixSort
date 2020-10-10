@@ -1,3 +1,4 @@
+#include "common/common.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <thrust/host_vector.h>
@@ -6,50 +7,10 @@
 #include <thrust/copy.h>
 #include <thrust/sort.h>
 
+#define DEVICE_ID 0
 #define DEBUG 0
 
 typedef enum { SORT_BY_HOST, SORT_BY_THRUST, SORT_BY_DEVICE } Implementation;
-
-#define CHECK(call) {                                                          \
-    const cudaError_t error = call;                                            \
-    if (error != cudaSuccess) {                                                \
-        fprintf(stderr, "Error: %s:%d, ", __FILE__, __LINE__);                 \
-        fprintf(stderr, "code: %d, reason: %s\n", error,                       \
-                cudaGetErrorString(error));                                    \
-        exit(EXIT_FAILURE);                                                    \
-    }                                                                          \
-}
-
-struct GpuTimer {
-    cudaEvent_t start;
-    cudaEvent_t stop;
-
-    GpuTimer() {
-        cudaEventCreate(&start);
-        cudaEventCreate(&stop);
-    }
-
-    ~GpuTimer() {
-        cudaEventDestroy(start);
-        cudaEventDestroy(stop);
-    }
-
-    void Start() {
-        cudaEventRecord(start, 0);
-        cudaEventSynchronize(start);
-    }
-
-    void Stop() {
-        cudaEventRecord(stop, 0);
-    }
-
-    float Elapsed() {
-        float elapsed;
-        cudaEventSynchronize(stop);
-        cudaEventElapsedTime(&elapsed, start, stop);
-        return elapsed;
-    }
-};
 
 void sortByHost(const uint32_t *input, int n, uint32_t *output, int nBits) {
     int nBins = 1 << nBits;
@@ -323,73 +284,83 @@ void printArray(uint32_t * a, int n) {
     printf("\n");
 }
 
-int main(int argc, char ** argv) {
-    // PRINT OUT DEVICE INFO
+int main(int argc, char **argv) {
+    CHECK(cudaSetDevice(DEVICE_ID));
+    CHECK(cudaDeviceReset());
+    cudaFree(0);
+    
     printDeviceInfo();
 
-    // SET UP INPUT SIZE
+    // Initialization of input.
     int n;
-    if (DEBUG) {
-        n = 513;
-    } else {
-        n = (1 << 24) + 1;
-    }
+    #if DEBUG
+    n = 513;
+    #else
+    n = (1 << 24) + 1;
+    #endif
     printf("\nInput size: %d\n", n);
 
-    // ALLOCATE MEMORIES
-    size_t bytes = n * sizeof(uint32_t);
-    uint32_t *in = (uint32_t *)malloc(bytes);
-    uint32_t *out = (uint32_t *)malloc(bytes);
-    uint32_t *correctOut = (uint32_t *)malloc(bytes);
+    size_t inputMemSize = n * sizeof(uint32_t);
+    uint32_t *input = (uint32_t *)malloc(inputMemSize);
+    uint32_t *output = (uint32_t *)malloc(inputMemSize);
+    uint32_t *correctOutput = (uint32_t *)malloc(inputMemSize);
 
-    // SET UP INPUT DATA
     for (int i = 0; i < n; i++) {
-        if (DEBUG) {
-            in[i] = rand() & 0xFF;
-        } else {
-            in[i] = rand();
-        }
+        #if DEBUG
+        input[i] = rand() & 0xFF;
+        #else
+        input[i] = rand();
+        #endif
     }
-    if (DEBUG) {
-        printArray(in, n);
-    }
+    #if DEBUG
+    printArray(input, n);
+    #endif
 
-    // DETERMINE BLOCK SIZE
+    // Block size.
     int blockSize = 512;
-    if (argc == 2) {
+    if (argc > 1) {
         blockSize = atoi(argv[1]);
     }
+    printf("Block size: %d\n", blockSize);
 
-    int nBits = 4;
-    if (argc == 3) {
-        nBits = atoi(argv[2]);
+    // Digit width.
+    int numBits;
+    #if DEBUG
+    numBits = 4;
+    #else
+    numBits = 8;
+    #endif
+    if (argc > 2) {
+        numBits = atoi(argv[2]);
     }
+    printf("Digit width: %d-bit\n", numBits);
 
     // Sorting by Host
-    sort(in, n, correctOut, SORT_BY_HOST, nBits);
-    if (DEBUG) {
-        printArray(correctOut, n);
-    }
+    sort(input, n, correctOutput, SORT_BY_HOST, numBits);
+    #if DEBUG
+    printArray(correctOutput, n);
+    #endif
 
-    // Sorting by Thrust Library
-    sort(in, n, out, SORT_BY_THRUST);
-    if (DEBUG) {
-        printArray(out, n);
-    }
-    checkCorrectness(out, correctOut, n);
-    memset(out, 0u, n * sizeof(uint32_t)); // Reset ouput.
+    // Sorting by Thrust Library.
+    memset(output, 0u, inputMemSize);
+    sort(input, n, output, SORT_BY_THRUST);
+    #if DEBUG
+    printArray(output, n);
+    #endif
+    checkCorrectness(output, correctOutput, n);
 
-    // Sorting by Device
-    sort(in, n, out, SORT_BY_DEVICE, nBits, blockSize);
-    if (DEBUG) {
-        printArray(out, n);
-    }
-    checkCorrectness(out, correctOut, n);
+    // Sorting by Device.
+    memset(output, 0u, inputMemSize);
+    sort(input, n, output, SORT_BY_DEVICE, numBits, blockSize);
+    #if DEBUG
+    printArray(output, n);
+    #endif
+    checkCorrectness(output, correctOutput, n);
 
-    // FREE MEMORIES
-    free(in);
-    free(out);
-    free(correctOut);
-    
+    free(input);
+    free(output);
+    free(correctOutput);
+
+    CHECK(cudaDeviceReset());
     return EXIT_SUCCESS;
 }
