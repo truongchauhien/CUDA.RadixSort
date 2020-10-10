@@ -274,7 +274,7 @@ __global__ void transposedKernel(const uint32_t *g_input, int numCols, int numRo
     if (inCol < numCols && inRow < numRows) {
         s_tile[insideBlockIndex] = g_input[inIndex];
     }
-    if (inCol + blockDim.x && inRow < numRows) {
+    if (inCol + blockDim.x < numCols && inRow < numRows) {
         s_tile[insideBlockIndex + blockDim.x] = g_input[inIndex + blockDim.x];
     }
     __syncthreads();
@@ -527,10 +527,10 @@ void sort(const uint32_t *in, int n,
     timer.Start();
 
     if (implementation == SORT_BY_HOST) {
-    	printf("\nRadix Sort by host\n");
+        printf("\nRadix Sort by host\n");
         sortByHost(in, n, out, numBits);
     } else if (implementation == SORT_BY_THRUST) {
-    	printf("\nRadix Sort by Thrust library\n");
+        printf("\nRadix Sort by Thrust library\n");
         sortByThrust(in, n, out);
     } else {
         printf("\nRadix Sort by device:\n");

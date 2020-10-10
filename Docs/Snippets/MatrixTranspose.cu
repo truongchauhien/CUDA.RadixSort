@@ -184,7 +184,7 @@ __global__ void transposeCoalescedConflictFreeUnroll2(const int *input, int numC
     if (inCol < numCols && inRow < numRows) {
         s_tile[insideBlockIndex] = input[inIndex];
     }
-    if (inCol + blockDim.x && inRow < numRows) {
+    if (inCol + blockDim.x < numCols && inRow < numRows) {
         s_tile[insideBlockIndex + blockDim.x] = input[inIndex + blockDim.x];
     }
     __syncthreads();

@@ -300,7 +300,7 @@ __global__ void transposedKernel(const uint32_t *g_input, int numCols, int numRo
     if (inCol < numCols && inRow < numRows) {
         s_tile[insideBlockIndex] = g_input[inIndex];
     }
-    if (inCol + blockDim.x && inRow < numRows) {
+    if (inCol + blockDim.x < numCols && inRow < numRows) {
         s_tile[insideBlockIndex + blockDim.x] = g_input[inIndex + blockDim.x];
     }
     __syncthreads();
