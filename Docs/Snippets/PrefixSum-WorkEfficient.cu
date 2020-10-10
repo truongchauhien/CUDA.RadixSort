@@ -85,16 +85,20 @@ __global__ void scanBlocksUnroll2(const int *input, int numElements, int *output
     int index = blockIdx.x * blockDim.x * 2 + threadIdx.x;
 
     // 1. Load data handled by this block into SMEM.
-    if (index < numElements) {
-        s_data[threadIdx.x] = input[index];
+    int indexPart1 = index;
+    int indexPart2 = blockDim.x + index;
+    int sIndexPart1 = threadIdx.x;
+    int sIndexPart2 = blockDim.x + threadIdx.x;
+    if (indexPart1 < numElements) {
+        s_data[sIndexPart1] = input[indexPart1];
     } else {
-        s_data[threadIdx.x] = 0;
+        s_data[sIndexPart1] = 0;
     }
 
-    if (index + blockDim.x < numElements) {
-        s_data[blockDim.x + threadIdx.x] = input[blockDim.x + index];
+    if (indexPart2 < numElements) {
+        s_data[sIndexPart2] = input[indexPart2];
     } else {
-        s_data[blockDim.x + threadIdx.x] = 0;
+        s_data[sIndexPart2] = 0;
     }
 
     // 2. Do scan with data on SMEM. Implementation of Work-Efficient algorithm.
@@ -103,17 +107,20 @@ __global__ void scanBlocksUnroll2(const int *input, int numElements, int *output
     for (int nNodes = blockDim.x; nNodes > 0; nNodes >>= 1) { // nNodes in the number of parent nodes, in the upper level.
         __syncthreads();
         if (threadIdx.x < nNodes) {
-            s_data[threadIdx.x * 2 * offset + offset * 2 - 1]
-                += s_data[threadIdx.x * 2 * offset + offset - 1];
+            int sIndexRight = threadIdx.x * 2 * offset + offset * 2 - 1;
+            int sIndexLeft  = threadIdx.x * 2 * offset + offset - 1;
+            s_data[sIndexRight] += s_data[sIndexLeft];
         }
         offset *= 2;
     }
     __syncthreads();
 
     if (threadIdx.x == 0 && blockSums != NULL) {
+        // Copy sum of block into block sums array.
         blockSums[blockIdx.x] = s_data[blockDim.x * 2 - 1];
     }
     if (threadIdx.x == 0) {
+        // Set 0 for the last element.
         s_data[blockDim.x * 2 - 1] = 0;
     }
 
@@ -122,21 +129,22 @@ __global__ void scanBlocksUnroll2(const int *input, int numElements, int *output
         __syncthreads();
         offset >>= 1;
         if (threadIdx.x < nNodes) {
-            int temp = s_data[threadIdx.x * 2 * offset + offset * 2 - 1];
-            s_data[threadIdx.x * 2 * offset + offset * 2 - 1]
-                += s_data[threadIdx.x * 2 * offset + offset - 1];
-            s_data[threadIdx.x * 2 * offset + offset - 1] = temp;            
+            int sIndexRight = threadIdx.x * 2 * offset + offset * 2 - 1;
+            int sIndexLeft  = threadIdx.x * 2 * offset + offset - 1;
+            int temp = s_data[sIndexRight];
+            s_data[sIndexRight] += s_data[sIndexLeft];
+            s_data[sIndexLeft] = temp;
         }
     }
     __syncthreads();
 
     // 3. Copy back results from SMEM to GMEM.
-    if (index < numElements) {
-        output[index] = s_data[threadIdx.x];
+    if (indexPart1 < numElements) {
+        output[indexPart1] = s_data[sIndexPart1];
     }
 
-    if (blockDim.x + index < numElements) {
-        output[blockDim.x + index] = s_data[blockDim.x + threadIdx.x];
+    if (indexPart2 < numElements) {
+        output[indexPart2] = s_data[sIndexPart2];
     }
 }
 
